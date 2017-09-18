@@ -1,0 +1,20 @@
+{
+    "name": "bconnect/docksal",
+    "description": "Wrapper for create a docksal project",
+    "authors": [
+        {
+            "name": "Erik Seifert",
+            "email": "erik.seifert@b-connect.de"
+        }
+    ],
+    "autoload": {
+        "psr-0": {"Bconnect": "src/"}
+    },
+    "bin": ["bin/phar-composer"],
+    "require": {
+        "symfony/console": "^3.3",
+        "symfony/filesystem": "^3.3",
+        "knplabs/github-api": "^2.5",
+        "php-http/guzzle6-adapter": "^1.1"
+    }
+}

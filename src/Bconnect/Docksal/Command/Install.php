@@ -37,7 +37,6 @@ class Install extends Command
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         if ($input->getOption('token') !== FALSE) {
-            $output->writeln('Authenticate with ' . $input->getOption('token'));
             $this->client->authenticate($input->getOption('token'),  null, Client::AUTH_HTTP_TOKEN);
         }
         $this->target = realpath($input->getArgument('path')) . '/.docksal';

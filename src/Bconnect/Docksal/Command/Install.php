@@ -11,6 +11,7 @@ use Symfony\Component\Console\Helper\DialogHelper;
 use Symfony\Component\Console\Question\ChoiceQuestion;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Filesystem\Filesystem;
+use SebastianBergmann\Diff\Differ;
 use Symfony\Component\Yaml\Yaml;
 use Github\Client;
 
@@ -45,16 +46,13 @@ class Install extends Command
         $this->repository = array_pop($repository);
         $this->user = array_pop($repository);
         $this->output = $output;
+        $this->input = $input;
         $profiles = $this->readCatalog();
         $helper = $this->getHelper('question');
         if ($this->files->exists($this->target)) {
-            $question = new ChoiceQuestion('.docksal already exists in this location. Delete/Ignore or overwrite this folder. ', [ 'd' => 'Delete', 'i' => 'Ignore', 'o' => 'Overwrite'], 'd');      
-            switch ($helper->ask($input, $output, $question)) {
-                case 'd':
-                    $this->files->remove($this->target . '/.docksal');
-                break;
-                default:
-                break;
+            $question = new ChoiceQuestion('.docksal already exists in this location. Delete/Ignore or overwrite this folder. ', ['I' => 'Ignore', 'd' => 'Delete'], 'i');      
+            if ($helper->ask($input, $output, $question) == 'd') {
+                $this->files->remove($this->target);
             }
         }
         $profile = $input->getOption('profile');
@@ -90,11 +88,42 @@ class Install extends Command
             }
             return;
         }
-        $this->output->write('<comment>Download file ' . $localPath .' </comment>');
-        $this->files->dumpFile(
-            $this->target . '/' . $localPath,
-            $this->client->api('repo')->contents()->download($this->user, $this->repository, $item['path'] , 'master')
-        );
+        $this->output->writeln('<comment>Download file ' . $localPath .'</comment>');
+        $contents = $this->client->api('repo')->contents()->download($this->user, $this->repository, $item['path'] , 'master');
+        $fileOp = 'Y';
+
+        if ($this->files->exists($this->target . '/' . $localPath)) {
+            $helper = $this->getHelper('question');
+            $question = new ChoiceQuestion('Which profile do you want to install. ', ['Y' => 'Overwrite','k' => 'Keep original','d' => 'Show diff'], 'Y');      
+            while (($fileOp = $helper->ask($this->input, $this->output, $question)) === 'd') {
+                $originalFile = file_get_contents($this->target . '/' . $localPath);
+                $differ = new Differ();
+                $patch = $differ->diff($originalFile, $contents);
+                $patch = explode("\n" , $patch);
+                foreach ($patch as $key => $p) {
+                    switch ($p{0}) {
+                        case '+':
+                            $patch[$key] = '<info>' . $p . '</info>';
+                        break;
+                        case '-':
+                            $patch[$key] = '<error>' . $p . '</error>';
+                        break;
+                        default:
+                            $patch[$key] = '<comment>' . $p . '</comment>';
+                    }
+                }
+                $this->output->writeln($patch);
+            }
+            if ($fileOp === 'Y') {
+                $this->files->remove($this->target . '/' . $localPath);
+            }
+        }
+        if ($fileOp !== 'k') {
+            $this->files->dumpFile(
+                $this->target . '/' . $localPath,
+                $contents
+            );
+        }
         $this->output->writeln('<info>Ready</info>');
         return;
 

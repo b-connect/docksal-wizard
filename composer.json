@@ -16,6 +16,7 @@
         "symfony/filesystem": "^3.3",
         "knplabs/github-api": "^2.5",
         "php-http/guzzle6-adapter": "^1.1",
-        "symfony/yaml": "^3.3"
+        "symfony/yaml": "^3.3",
+        "sebastian/diff": "^2.0"
     }
 }

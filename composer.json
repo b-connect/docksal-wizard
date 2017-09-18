@@ -10,7 +10,7 @@
     "autoload": {
         "psr-0": {"Bconnect": "src/"}
     },
-    "bin": ["bin/phar-composer"],
+    "bin": ["bin/docksal"],
     "require": {
         "symfony/console": "^3.3",
         "symfony/filesystem": "^3.3",

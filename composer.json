@@ -15,6 +15,7 @@
         "symfony/console": "^3.3",
         "symfony/filesystem": "^3.3",
         "knplabs/github-api": "^2.5",
-        "php-http/guzzle6-adapter": "^1.1"
+        "php-http/guzzle6-adapter": "^1.1",
+        "symfony/yaml": "^3.3"
     }
 }

@@ -12,8 +12,8 @@ use Symfony\Component\Console\Question\ChoiceQuestion;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Filesystem\Filesystem;
 use SebastianBergmann\Diff\Differ;
-use Symfony\Component\Yaml\Yaml;
 use Github\Client;
+use Bconnect\Docksal\Catalog;
 
 class Install extends Command
 {
@@ -31,26 +31,20 @@ class Install extends Command
              ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'GitHUB Catalog to use', false)
              ->addOption('token', 't', InputOption::VALUE_OPTIONAL, 'Github auth token for rate limits', false);
         $this->path = dirname(__FILE__) . '/../../../docksal';
-        $this->client = new Client();
         $this->files = new Filesystem();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        if ($input->getOption('token') !== FALSE) {
-            $this->client->authenticate($input->getOption('token'),  null, Client::AUTH_HTTP_TOKEN);
-        }
         $this->target = realpath($input->getArgument('path')) . '/.docksal';
 
-        $repository = explode('/', $input->getOption('repository'));
-        $this->repository = array_pop($repository);
-        $this->user = array_pop($repository);
+        $this->catalog = new Catalog($input->getOption('repository'), $output, $input->getOption('token'));
         $this->output = $output;
         $this->input = $input;
-        $profiles = $this->readCatalog();
+        $profiles = $this->catalog->readCatalog();
         $helper = $this->getHelper('question');
         if ($this->files->exists($this->target)) {
-            $question = new ChoiceQuestion('.docksal already exists in this location. Delete/Ignore or overwrite this folder. ', ['I' => 'Ignore', 'd' => 'Delete'], 'i');      
+            $question = new ChoiceQuestion('.docksal already exists in this location. Delete/Ignore or overwrite this folder. ', ['I' => 'Ignore', 'd' => 'Delete'], 'I');      
             if ($helper->ask($input, $output, $question) == 'd') {
                 $this->files->remove($this->target);
             }
@@ -59,7 +53,7 @@ class Install extends Command
         if ($profile === FALSE || !isset($profiles[$profile])) {
             $profileQuestion = [];
             foreach ($profiles as $key => $item) {
-                $profileQuestion[$key] = $item['info']['title'];
+                $profileQuestion[$key] = '<options=bold>' . $item['info']['title'] . '</>';
             }
             $question = new ChoiceQuestion('Which profile do you want to install. ', $profileQuestion, null);      
             $profile = $helper->ask($input, $output, $question);
@@ -70,11 +64,34 @@ class Install extends Command
 
     protected function writeCatalog($item) {
         $this->output->writeln('Install: ' . $item['info']['title']);
-        $fileInfo = $this->client->api('repo')->contents()->show($this->user, $this->repository, $item['path'] . '/contents', 'master');
+        $fileInfo = $this->catalog->show($item['path'] . '/contents');
         foreach ($fileInfo as $info) {
             $this->write($info);
         }
         return;
+    }
+
+    protected function askForDiff($localPath, $contents) {
+        $originalFile = file_get_contents($this->target . '/' . $localPath);
+        $differ = new Differ();
+        $patch = $differ->diff($originalFile, $contents);
+        $patch = explode("\n" , $patch);
+        foreach ($patch as $key => $p) {
+            if (strlen($p) === 0) {
+                $p = ' ';
+            }
+            switch ($p{0}) {
+                case '+':
+                    $patch[$key] = '<info>' . $p . '</info>';
+                break;
+                case '-':
+                    $patch[$key] = '<error>' . $p . '</error>';
+                break;
+                default:
+                    $patch[$key] = '<comment>' . $p . '</comment>';
+            }
+        }
+        $this->output->writeln($patch);
     }
 
     private function write($item) {
@@ -82,37 +99,21 @@ class Install extends Command
         $localPath = array_pop($localPath);
         
         if ($item['type'] === 'dir') {
-            $fileInfo = $this->client->api('repo')->contents()->show($this->user, $this->repository, $item['path'], 'master');
+            $fileInfo = $this->catalog->show($item['path']);
             foreach ($fileInfo as $info) {
                 $this->write($info);
             }
             return;
         }
         $this->output->writeln('<comment>Download file ' . $localPath .'</comment>');
-        $contents = $this->client->api('repo')->contents()->download($this->user, $this->repository, $item['path'] , 'master');
+        $contents = $this->catalog->download($item['path']);
         $fileOp = 'Y';
 
         if ($this->files->exists($this->target . '/' . $localPath)) {
             $helper = $this->getHelper('question');
-            $question = new ChoiceQuestion('Which profile do you want to install. ', ['Y' => 'Overwrite','k' => 'Keep original','d' => 'Show diff'], 'Y');      
+            $question = new ChoiceQuestion('File ('.$localPath.') already exists. ', ['Y' => 'Overwrite','k' => 'Keep original','d' => 'Show diff'], 'Y');      
             while (($fileOp = $helper->ask($this->input, $this->output, $question)) === 'd') {
-                $originalFile = file_get_contents($this->target . '/' . $localPath);
-                $differ = new Differ();
-                $patch = $differ->diff($originalFile, $contents);
-                $patch = explode("\n" , $patch);
-                foreach ($patch as $key => $p) {
-                    switch ($p{0}) {
-                        case '+':
-                            $patch[$key] = '<info>' . $p . '</info>';
-                        break;
-                        case '-':
-                            $patch[$key] = '<error>' . $p . '</error>';
-                        break;
-                        default:
-                            $patch[$key] = '<comment>' . $p . '</comment>';
-                    }
-                }
-                $this->output->writeln($patch);
+                $this->askForDiff($localPath, $contents);
             }
             if ($fileOp === 'Y') {
                 $this->files->remove($this->target . '/' . $localPath);
@@ -129,31 +130,6 @@ class Install extends Command
 
     }
 
-    protected function readCatalog() {
-        $this->output->writeln('Reading catalog on' . $this->user . '/' . $this->repository);
-        $catalogInfo = [];
-        $catalog = array_filter($this->client->api('repo')->contents()->show($this->user, $this->repository, 'catalog', 'master'),function($value, $key) use (&$catalogInfo) {
-            if ($value['type'] !== 'dir') {
-                return FALSE;
-            }
-            if ($this->client->api('repo')->contents()->exists($this->user, $this->repository, 'catalog', 'master', $value['path'] . '/index.yml', 'master')
-                && ($content = $this->client->api('repo')->contents()->download($this->user, $this->repository, $value['path'] . '/index.yml', 'master'))
-                && ($content = Yaml::parse($content))) {
-              $this->output->writeln('<info>Found: ' . $content['title'] . '</info>');
-              $key = explode('/' , $value['path']);
-              array_shift($key);
-              $key = implode('/', $key);
-              $catalogInfo[$key] = [
-                'path' => $value['path'],
-                'info' => $content
-              ];
-              return TRUE;
-            }
-            return FALSE;
-          }, ARRAY_FILTER_USE_BOTH);
-        return $catalogInfo;
-        
-    }
 
     protected function copyDir($target, $output) {
         $target = $target . '/.docksal';

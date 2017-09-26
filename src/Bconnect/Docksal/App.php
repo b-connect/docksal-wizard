@@ -8,5 +8,6 @@ class App extends BaseApplication {
   {
       parent::__construct('docksal', '@git_tag@');
       $this->add(new Command\Install());
+      $this->add(new Command\ListProfiles());
   }
 }

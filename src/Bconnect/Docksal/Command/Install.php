@@ -10,6 +10,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Helper\DialogHelper;
 use Symfony\Component\Console\Question\ChoiceQuestion;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use Symfony\Component\Console\Question\Question;
 use Symfony\Component\Filesystem\Filesystem;
 use SebastianBergmann\Diff\Differ;
 use Github\Client;
@@ -62,11 +63,29 @@ class Install extends Command
         $this->writeCatalog($profiles[$profile]);
     }
 
+    protected function getVariables($profile) {
+        $variables = [];
+        if (!isset($profile['variables'])) {
+            return $variables;
+        }
+        $helper = $this->getHelper('question');
+        foreach ($profile['variables'] as $key => $variable) {
+            $default = '';
+            if ($variable['default']) {
+                $default = $variable['default'];
+            }
+            $question = new Question($variable['title'], $default);
+            $variables[$key] = $helper->ask($this->input, $this->output, $question);
+        }
+        return $variables;
+    }
+
     protected function writeCatalog($item) {
+        $vars = $this->getVariables($item['info']);
         $this->output->writeln('Install: ' . $item['info']['title']);
         $fileInfo = $this->catalog->show($item['path'] . '/contents');
         foreach ($fileInfo as $info) {
-            $this->write($info);
+            $this->write($info, $vars);
         }
         return;
     }
@@ -94,19 +113,22 @@ class Install extends Command
         $this->output->writeln($patch);
     }
 
-    private function write($item) {
+    private function write($item, $vars) {
         $localPath = explode('contents/', $item['path']);
         $localPath = array_pop($localPath);
         
         if ($item['type'] === 'dir') {
             $fileInfo = $this->catalog->show($item['path']);
             foreach ($fileInfo as $info) {
-                $this->write($info);
+                $this->write($info, $vars);
             }
             return;
         }
         $this->output->writeln('<comment>Download file ' . $localPath .'</comment>');
         $contents = $this->catalog->download($item['path']);
+        foreach ($vars as $key => $value) {
+            $contents = str_replace('{#' . $key . '#}', $value, $contents);
+        }
         $fileOp = 'Y';
 
         if ($this->files->exists($this->target . '/' . $localPath)) {

@@ -45,7 +45,7 @@ class Install extends Command
         $profiles = $this->catalog->readCatalog();
         $helper = $this->getHelper('question');
         if ($this->files->exists($this->target)) {
-            $question = new ChoiceQuestion('.docksal already exists in this location. Delete/Ignore or overwrite this folder. ', ['I' => 'Ignore', 'd' => 'Delete'], 'I');      
+            $question = new ChoiceQuestion('.docksal already exists in this location. Delete/Ignore or overwrite this folder. ', ['I' => 'Ignore', 'd' => 'Delete'], 'I');
             if ($helper->ask($input, $output, $question) == 'd') {
                 $this->files->remove($this->target);
             }
@@ -56,7 +56,7 @@ class Install extends Command
             foreach ($profiles as $key => $item) {
                 $profileQuestion[$key] = '<options=bold>' . $item['info']['title'] . '</>';
             }
-            $question = new ChoiceQuestion('Which profile do you want to install. ', $profileQuestion, null);      
+            $question = new ChoiceQuestion('Which profile do you want to install. ', $profileQuestion, null);
             $profile = $helper->ask($input, $output, $question);
         }
 
@@ -71,10 +71,14 @@ class Install extends Command
         $helper = $this->getHelper('question');
         foreach ($profile['variables'] as $key => $variable) {
             $default = '';
+            $title = $variable['title'] . ': ';
             if ($variable['default']) {
                 $default = $variable['default'];
+                $title = $variable['title'] . ' (' . $default . ') : ';
             }
-            $question = new Question($variable['title'], $default);
+            $bundles = [$default];
+            $question = new Question($title, $default);
+            $question->setAutocompleterValues($bundles);
             $variables[$key] = $helper->ask($this->input, $this->output, $question);
         }
         return $variables;
@@ -116,7 +120,7 @@ class Install extends Command
     private function write($item, $vars) {
         $localPath = explode('contents/', $item['path']);
         $localPath = array_pop($localPath);
-        
+
         if ($item['type'] === 'dir') {
             $fileInfo = $this->catalog->show($item['path']);
             foreach ($fileInfo as $info) {
@@ -133,7 +137,7 @@ class Install extends Command
 
         if ($this->files->exists($this->target . '/' . $localPath)) {
             $helper = $this->getHelper('question');
-            $question = new ChoiceQuestion('File ('.$localPath.') already exists. ', ['Y' => 'Overwrite','k' => 'Keep original','d' => 'Show diff'], 'Y');      
+            $question = new ChoiceQuestion('File ('.$localPath.') already exists. ', ['Y' => 'Overwrite','k' => 'Keep original','d' => 'Show diff'], 'Y');
             while (($fileOp = $helper->ask($this->input, $this->output, $question)) === 'd') {
                 $this->askForDiff($localPath, $contents);
             }
@@ -159,7 +163,7 @@ class Install extends Command
         $fileSystem->mkdir($target);
 
         $output->writeln('Copy ' . $this->path . ' to ' . $target);
-        
+
         $directoryIterator = new \RecursiveDirectoryIterator($this->path, \RecursiveDirectoryIterator::SKIP_DOTS);
         $iterator = new \RecursiveIteratorIterator($directoryIterator, \RecursiveIteratorIterator::SELF_FIRST);
         foreach ($iterator as $item) {

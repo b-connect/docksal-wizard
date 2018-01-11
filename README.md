@@ -11,7 +11,7 @@ composer global require bconnect/docksal
 
 ## Execution
 ```
-docksal
+docksal install
 ```
 
 ## Default Catalog
